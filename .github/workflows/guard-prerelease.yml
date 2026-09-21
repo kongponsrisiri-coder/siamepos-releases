@@ -1,0 +1,29 @@
+# Guard: only desktop till releases (tag vX.Y.Z) may be "full" releases.
+# The desktop app's auto-updater reads /releases/latest of this repo — GitHub
+# defines "latest" as the newest non-prerelease of ANY tag. A spa-v* or
+# tablet-v* release published without --prerelease therefore hijacks every
+# restaurant till's update check (happened 20 + 21 Sep 2026). This flips any
+# such release to prerelease within a minute of publishing, no matter who
+# published it or how.
+name: Keep non-desktop releases out of "latest"
+on:
+  release:
+    types: [published, edited, released, prereleased]
+permissions:
+  contents: write
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Flip non-v* full releases to prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+          ID: ${{ github.event.release.id }}
+          PRE: ${{ github.event.release.prerelease }}
+        run: |
+          if [[ "$TAG" =~ ^v[0-9] ]]; then echo "desktop release $TAG — allowed as full"; exit 0; fi
+          if [[ "$PRE" == "true" ]]; then echo "$TAG already prerelease"; exit 0; fi
+          echo "::warning::$TAG was published as a FULL release — flipping to prerelease so the desktop updater keeps v* as latest"
+          gh api -X PATCH "repos/${{ github.repository }}/releases/$ID" -f prerelease=true >/dev/null
+          echo "flipped $TAG"
